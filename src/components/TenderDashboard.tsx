@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { TenderProject } from '../types';
 import { X, Building2, Calendar, MapPin, ExternalLink, BadgeIndianRupee, Code } from 'lucide-react';
 
-interface ProjectDashboardProps {
+interface TenderDashboardProps {
   project: TenderProject | null;
   onClose: () => void;
 }
 
-export default function ProjectDashboard({ project, onClose }: ProjectDashboardProps) {
+export default function TenderDashboard({ project, onClose }: TenderDashboardProps) {
   const [showRaw, setShowRaw] = useState(false);
 
   if (!project) return null;

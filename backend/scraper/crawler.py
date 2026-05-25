@@ -71,7 +71,6 @@ class TelanganaTenderScraper:
 
     async def refresh_session(self):
         """Initializes/refreshes a valid browser session and extracts session cookies."""
-        await self.log("[→] Initializing session via Playwright browser...")
         try:
             self.context = await browser_manager.get_context()
             page = await self.context.new_page()
@@ -79,7 +78,6 @@ class TelanganaTenderScraper:
                 # Navigate to the portal's main details home page
                 await page.goto("https://tender.telangana.gov.in/TenderDetailsHome.html", wait_until="networkidle", timeout=45000)
                 await page.wait_for_selector("table", timeout=20000)
-                await self.log("[✓] Portal page loaded. Extracting cookies...")
                 
                 # Fetch cookies from browser context
                 pw_cookies = await self.context.cookies()
@@ -87,7 +85,7 @@ class TelanganaTenderScraper:
                 
                 # Apply cookies to the HTTP client
                 self.client.cookies.update(self.cookies)
-                await self.log(f"[✓] Established session cookies: {', '.join(self.cookies.keys())}")
+                await self.log("[✓] Session refreshed")
             finally:
                 await page.close()
         except Exception as e:
@@ -183,7 +181,6 @@ class TelanganaTenderScraper:
                 
                 # Check for session timeout redirect
                 if response.status_code == 302 and "SessionTimeOut" in response.headers.get("Location", ""):
-                    await self.log("[!] Session timeout detected on HTTP request. Re-establishing session via Playwright...")
                     if self.status_callback:
                         await self.status_callback("session_refresh", {})
                     await self.refresh_session()
@@ -193,7 +190,7 @@ class TelanganaTenderScraper:
                     try:
                         data = response.json()
                         records = data.get("aaData") or data.get("data") or []
-                        await self.log(f"[✓] Retrieved {len(records)} records at offset {start} from portal.")
+                        await self.log(f"[✓] Page {start // length + 1} fetched")
                         return records
                     except Exception as json_err:
                         await self.log(f"[✗] Failed to parse JSON response: {json_err}")
@@ -207,6 +204,41 @@ class TelanganaTenderScraper:
             
         return []
 
+    def is_valid_file(self, filepath: str) -> bool:
+        """Validates that a downloaded file is correct and not an HTML timeout page."""
+        if not filepath or not os.path.exists(filepath):
+            return False
+        if os.path.getsize(filepath) == 0:
+            return False
+            
+        try:
+            with open(filepath, 'rb') as f:
+                header = f.read(2048).lower()
+                if b"<html" in header or b"<!doctype html" in header:
+                    return False
+                if b"couldn't process request" in header or b"please log in again" in header:
+                    return False
+        except Exception as e:
+            logger.error(f"Error checking file header: {e}")
+            return False
+            
+        # Verify formats
+        if filepath.lower().endswith(".pdf"):
+            if PdfReader:
+                try:
+                    reader = PdfReader(filepath)
+                    _ = len(reader.pages)
+                    return True
+                except Exception:
+                    return False
+            return True
+        elif filepath.lower().endswith(".zip"):
+            try:
+                return zipfile.is_zipfile(filepath)
+            except Exception:
+                return False
+        return True
+
     async def fetch_details_and_documents(self, indent_id: str, category_id: str, procurement_id: str, dest_dir: str):
         """Opens Playwright pages to load detail/document forms, extract metadata and download attachments."""
         if not self.context:
@@ -219,7 +251,6 @@ class TelanganaTenderScraper:
         
         try:
             # 1. Load details page (using POST form submission simulation inside page context)
-            await self.log(f"[→] Loading details page for Indent {indent_id}...")
             post_js = """
             (url, data) => {
                 const form = document.createElement('form');
@@ -249,6 +280,7 @@ class TelanganaTenderScraper:
                 "hdnProcurementID": procurement_id
             })
             await page.wait_for_load_state("networkidle")
+            await self.log("[✓] Detail page opened")
             
             # Extract detailed fields
             html = await page.content()
@@ -261,10 +293,9 @@ class TelanganaTenderScraper:
                     if lbl:
                         detail_fields[lbl] = val
                         
-            await self.log(f"[✓] Scraped details for Indent {indent_id}. Properties: {len(detail_fields)}")
+            await self.log(f"[✓] Tender {indent_id} parsed")
 
             # 2. Load document attachments list page
-            await self.log(f"[→] Loading document list page for Indent {indent_id}...")
             await page.evaluate(post_js, "https://tender.telangana.gov.in/ViewTenderDocuments.html", {
                 "popUPRequestParameter": "popUPRequestParameter",
                 "hdnFromStatus": "moretenders",
@@ -291,31 +322,62 @@ class TelanganaTenderScraper:
                         "path_type": path_type,
                         "title": a.get_text(strip=True) or doc_name
                     })
-            await self.log(f"[✓] Document list found: {len(docs_list)} attachments available.")
+            await self.log(f"[✓] Found {len(docs_list)} attachments")
 
-            # 3. Trigger browser-based expect_download()
+            # 3. Trigger browser-based expect_download() using real clicks
             os.makedirs(dest_dir, exist_ok=True)
             for doc in docs_list:
                 doc_name = doc["doc_name"]
                 doc_id = doc["doc_id"]
-                path_type = doc["path_type"]
                 local_path = os.path.join(dest_dir, doc_name)
                 
-                if self.status_callback:
-                    await self.status_callback("download", {"filename": doc_name})
-                    
-                await self.log(f"[→] Downloading attachment: {doc_name}...")
-                try:
-                    async with page.expect_download(timeout=60000) as download_info:
-                        await page.evaluate(f"downloadFun('{doc_id}', '{doc_name}', '{path_type}')")
-                    download = await download_info.value
-                    await download.save_as(local_path)
-                    await self.log(f"[✓] Saved {doc_name} to {local_path} ({os.path.getsize(local_path)} bytes)")
-                    downloaded_files.append(local_path)
-                except Exception as dl_err:
-                    await self.log(f"[✗] Failed to download {doc_name}: {dl_err}")
+                # Locate anchor via onclick attribute containing doc_id
+                anchor_selector = f"a[onclick*='{doc_id}']"
+                
+                success = False
+                for attempt in range(3):
                     if self.status_callback:
-                        await self.status_callback("error", {"message": f"Download failed for {doc_name}: {str(dl_err)}"})
+                        await self.status_callback("download", {"filename": doc_name})
+                    
+                    try:
+                        async with page.expect_download(timeout=60000) as download_info:
+                            await page.locator(anchor_selector).first.click()
+                        download = await download_info.value
+                        await download.save_as(local_path)
+                        
+                        # Validate the downloaded file
+                        if self.is_valid_file(local_path):
+                            await self.log(f"[✓] Downloaded {doc_name}")
+                            downloaded_files.append(local_path)
+                            success = True
+                            break
+                        else:
+                            await self.log("[✗] Invalid HTML response detected")
+                            if os.path.exists(local_path):
+                                os.remove(local_path)
+                                
+                            # Re-establish browser session
+                            await self.refresh_session()
+                            
+                            # Reload documents list page
+                            await page.goto("https://tender.telangana.gov.in/TenderDetailsHome.html")
+                            await page.evaluate(post_js, "https://tender.telangana.gov.in/ViewTenderDocuments.html", {
+                                "popUPRequestParameter": "popUPRequestParameter",
+                                "hdnFromStatus": "moretenders",
+                                "hdnProcurementID": procurement_id,
+                                "hdnIndentID": indent_id,
+                                "hdnPreviousPage": "TenderDetailsHome.html"
+                            })
+                            await page.wait_for_load_state("networkidle")
+                            await self.log("[✓] Retrying attachment download")
+                    except Exception as dl_err:
+                        await self.log(f"[✗] Failed download attempt {attempt+1} for {doc_name}: {dl_err}")
+                        await self.refresh_session()
+                        
+                if not success:
+                    await self.log(f"[✗] Failed to download valid document {doc_name} after 3 attempts.")
+                    if self.status_callback:
+                        await self.status_callback("error", {"message": f"Download failed for {doc_name}"})
                         
         except Exception as e:
             await self.log(f"[✗] Detail page scraping failed: {e}")

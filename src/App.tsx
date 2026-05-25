@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { TenderProject } from './types';
 import Map from './components/Map';
 import FilterBar from './components/FilterBar';
-import ProjectDashboard from './components/ProjectDashboard';
+import TenderDashboard from './components/TenderDashboard';
 import { AnimatePresence, motion } from 'motion/react';
 import { 
   ArrowRight, LayoutGrid, Info, Landmark, Shield, FileText, Phone, 
@@ -928,7 +928,7 @@ export default function App() {
       {/* Split/Slide-over Project Insights Panel */}
       <AnimatePresence>
         {selectedProject && (
-          <ProjectDashboard 
+          <TenderDashboard 
             project={selectedProject} 
             onClose={() => setSelectedProject(null)} 
           />

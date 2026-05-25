@@ -27,7 +27,6 @@ services:
     restart: always
     environment:
       - DATABASE_URL=postgresql://manamap_user:manamap_password@db:5432/manamap_ledger_db
-      - GEMINI_API_KEY=${VITE_GEMINI_API_KEY}
     ports:
       - "8000:8000"
     depends_on:

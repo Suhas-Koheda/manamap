@@ -196,15 +196,15 @@ async def run_scraper_task(db_session: Session):
 
     offset = 0
     limit = 10
-    max_pages = 3  # Scrape up to 30 tenders (3 pages) per manual run for safety
     tenders_processed = 0
     tenders_saved = 0
     documents_downloaded = 0
+    page_num = 0
 
     try:
         await scraper.refresh_session()
         
-        for page_num in range(max_pages):
+        while True:
             scraper_state.current_offset = offset
             await status_callback("progress", {
                 "offset": offset,
@@ -214,14 +214,14 @@ async def run_scraper_task(db_session: Session):
                 "pages_processed": page_num
             })
             
-            await status_callback("log", {"message": f"Fetching page {page_num + 1} starting at offset {offset}..."})
             records = await scraper.fetch_page(start=offset, length=limit)
             
             if not records:
-                await status_callback("log", {"message": f"No records found at offset {offset}. Completing run."})
+                await status_callback("log", {"message": f"[✓] No records found at offset {offset}. Completing run."})
                 break
                 
             scraper_state.pages_processed += 1
+            page_num += 1
             
             for record in records:
                 tenders_processed += 1

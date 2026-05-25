@@ -1,6 +1,6 @@
 {
   "name": "ManaMap",
-  "description": "A map-first civic intelligence platform for Telangana to report public issues and explore local spots.",
+  "description": "A map-first procurement intelligence and infrastructure tracking platform for Telangana State.",
   "requestFramePermissions": ["geolocation"],
-  "majorCapabilities": ["Mapping", "Crowdsourced Reporting", "Civic Engagement"]
+  "majorCapabilities": ["Mapping", "Procurement Ingestion", "Infrastructure Tracking"]
 }

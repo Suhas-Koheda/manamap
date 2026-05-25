@@ -1,20 +1,44 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# ManaMap: Telangana Procurement Intelligence Platform
 
-# Run and deploy your AI Studio app
+ManaMap is a map-first procurement intelligence and infrastructure tracking platform for Telangana State. It automatically ingests, scrapes, parses, and maps municipal infrastructure projects, road works, and tenders.
 
-This contains everything you need to run your app locally.
+## 🏗️ Architecture
 
-View your app in AI Studio: https://ai.studio/apps/d65400e9-fe93-44ba-85fe-ee567301f6c2
+- **Backend**: FastAPI (Python), Playwright, SQLAlchemy, WebSockets, PostgreSQL/SQLite.
+- **Frontend**: React (TypeScript), Vite, Tailwind CSS, Leaflet/Mapbox.
 
-## Run Locally
+## 🚀 Running Locally
 
-**Prerequisites:**  Node.js
+### Prerequisites
 
+- Node.js (v18+)
+- Python (3.10+)
+- pnpm (recommended)
+
+### 1. Backend Setup
+
+1. Navigate to the backend directory and install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. Setup Playwright browsers:
+   ```bash
+   playwright install chromium
+   ```
+3. Initialize the database and launch the FastAPI server:
+   ```bash
+   python backend/main.py
+   ```
+   The API documentation will be available at `http://localhost:8000/docs`.
+
+### 2. Frontend Setup
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+   ```bash
+   pnpm install
+   ```
+2. Run the Vite development server:
+   ```bash
+   pnpm dev
+   ```
+   Open `http://localhost:5173` in your browser.
