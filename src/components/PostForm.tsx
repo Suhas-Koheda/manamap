@@ -2,7 +2,6 @@ import React, { useState, useRef } from 'react';
 import { db, storage, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { analyzePost } from '../services/geminiService';
 import { motion } from 'motion/react';
 import { X, Camera, MapPin, Sparkles, ArrowRight, Upload, Check } from 'lucide-react';
 import { DISTRICTS } from '../constants';
@@ -48,17 +47,6 @@ export default function PostForm({ lat, lng, onClose, onSuccess }: PostFormProps
     setLoading(true);
     setAnalyzing(true);
 
-    try {
-      // AI Analysis
-      const analysis = await analyzePost(title, description);
-      
-      if (!analysis.safe) {
-        alert("The content seems inappropriate. Please revise.");
-        setLoading(false);
-        setAnalyzing(false);
-        return;
-      }
-
       let imageUrl = "";
       if (imageFile) {
         const storageRef = ref(storage, `posts/${Date.now()}_${imageFile.name}`);
@@ -73,7 +61,7 @@ export default function PostForm({ lat, lng, onClose, onSuccess }: PostFormProps
         description,
         type,
         district,
-        category: category || analysis.category,
+        category: category || "infrastructure",
         latitude: lat,
         longitude: lng,
         status: 'open',

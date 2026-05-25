@@ -1,18 +1,20 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { db, initAuth } from './lib/firebase';
-import { collection, query, onSnapshot } from 'firebase/firestore';
 import { TenderProject } from './types';
 import Map from './components/Map';
 import FilterBar from './components/FilterBar';
 import ProjectDashboard from './components/ProjectDashboard';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowRight, LayoutGrid, Info, Landmark, Shield, FileText, Phone, Building2, BadgeIndianRupee, Activity, MapPin } from 'lucide-react';
+import { ArrowRight, LayoutGrid, Info, Landmark, Shield, FileText, Phone, Building2, BadgeIndianRupee, Activity, MapPin, RefreshCw } from 'lucide-react';
 
 type TabType = 'explorer' | 'insights' | 'about' | 'privacy' | 'terms' | 'contact' | 'data';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export default function App() {
   const [projects, setProjects] = useState<TenderProject[]>([]);
   const [selectedProject, setSelectedProject] = useState<TenderProject | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   
   // Filter States
   const [selectedDistrict, setSelectedDistrict] = useState<string>("");
@@ -21,32 +23,41 @@ export default function App() {
   const [minBudget, setMinBudget] = useState<number>(0);
   const [maxBudget, setMaxBudget] = useState<number>(0);
   
+  // Scraper status
+  const [scraperLoading, setScraperLoading] = useState(false);
+  const [scraperMessage, setScraperMessage] = useState("");
+
   const [activeTab, setActiveTab] = useState<TabType>('explorer');
   const contentRef = useRef<HTMLElement>(null);
 
+  // Fetch Tenders
+  const fetchTenders = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedDistrict) params.append("district", selectedDistrict);
+      if (selectedDepartment) params.append("department", selectedDepartment);
+      if (selectedStatus && selectedStatus !== 'all') params.append("status", selectedStatus);
+      if (minBudget > 0) params.append("minValue", minBudget.toString());
+      if (maxBudget > 0) params.append("maxValue", maxBudget.toString());
+      if (searchQuery) params.append("q", searchQuery);
+      params.append("limit", "100"); // Show up to 100 on screen/map
+
+      const res = await fetch(`${API_URL}/api/tenders?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setProjects(data.results || []);
+      }
+    } catch (error) {
+      console.error("Error fetching tenders:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    initAuth();
-    // Fetch all tender projects from Firestore
-    const q = query(collection(db, 'projects'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const projectsData = snapshot.docs.map(doc => {
-        const data = doc.data();
-        const locationGeo = data.location;
-        return {
-          id: doc.id,
-          ...data,
-          location: {
-            latitude: locationGeo?.latitude || 17.85,
-            longitude: locationGeo?.longitude || 79.15
-          }
-        };
-      }) as TenderProject[];
-      setProjects(projectsData);
-    }, (error) => {
-      console.error("Error listening to projects collection:", error);
-    });
-    return () => unsubscribe();
-  }, []);
+    fetchTenders();
+  }, [selectedDistrict, selectedDepartment, selectedStatus, minBudget, maxBudget, searchQuery]);
 
   const handleResetFilters = () => {
     setSelectedDistrict("");
@@ -54,31 +65,40 @@ export default function App() {
     setSelectedStatus("all");
     setMinBudget(0);
     setMaxBudget(0);
+    setSearchQuery("");
   };
 
-  const filteredProjects = useMemo(() => {
-    return projects.filter(p => {
-      const matchesDistrict = !selectedDistrict || p.district === selectedDistrict;
-      const matchesDepartment = !selectedDepartment || p.department === selectedDepartment;
-      const matchesStatus = selectedStatus === 'all' || p.status === selectedStatus;
-      
-      const amount = p.sanctionedAmount;
-      const matchesMinBudget = !minBudget || amount >= minBudget;
-      const matchesMaxBudget = !maxBudget || amount <= maxBudget;
-      
-      return matchesDistrict && matchesDepartment && matchesStatus && matchesMinBudget && matchesMaxBudget;
-    });
-  }, [projects, selectedDistrict, selectedDepartment, selectedStatus, minBudget, maxBudget]);
+  const handleTriggerScraper = async () => {
+    setScraperLoading(true);
+    setScraperMessage("");
+    try {
+      const res = await fetch(`${API_URL}/api/scraper/run`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        setScraperMessage("Aggregation pipeline triggered in background successfully.");
+        // Refresh tenders list after delay
+        setTimeout(() => fetchTenders(), 4000);
+      } else {
+        setScraperMessage("Failed to trigger aggregation pipeline.");
+      }
+    } catch (err) {
+      console.error("Failed to run scraper:", err);
+      setScraperMessage("Failed to communicate with API server.");
+    } finally {
+      setScraperLoading(false);
+    }
+  };
 
-  // Compute Statistics for Hero / Insights
+  // Compute Statistics
   const stats = useMemo(() => {
     const totalCount = projects.length;
     const openCount = projects.filter(p => p.status === 'open').length;
     const activeCount = projects.filter(p => p.status === 'awarded').length;
     const completedCount = projects.filter(p => p.status === 'completed').length;
     
-    const totalSanctionedValue = projects.reduce((sum, p) => sum + p.sanctionedAmount, 0);
-    const activeProjectsRatio = totalCount > 0 ? Math.round(((activeCount + completedCount) / totalCount) * 100) : 100;
+    const totalSanctionedValue = projects.reduce((sum, p) => sum + p.tenderValue, 0);
+    const activeProjectsRatio = totalCount > 0 ? Math.round(((activeCount + completedCount) / totalCount) * 100) : 0;
 
     return {
       totalCount,
@@ -150,28 +170,36 @@ export default function App() {
             </button>
           </div>
 
-          <div className="flex items-center gap-2 md:gap-4">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleTriggerScraper}
+              disabled={scraperLoading}
+              className="flex items-center gap-2 px-3 py-2 bg-ash-gray hover:bg-steel-gray rounded-xl font-bold text-[9px] uppercase tracking-wider transition-all disabled:opacity-50 cursor-pointer text-dark-charcoal"
+            >
+              <RefreshCw size={12} className={scraperLoading ? "animate-spin" : ""} />
+              <span>Run Scraper</span>
+            </button>
             <a 
               href="https://tender.telangana.gov.in"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 px-4 md:px-5 py-2.5 md:py-3 bg-telangana-teal text-white rounded-xl font-black text-[9px] md:text-[10px] uppercase tracking-widest hover:bg-action-teal transition-all shadow-lg shadow-telangana-teal/20 active:scale-95 cursor-pointer"
+              className="flex items-center gap-2 px-4 py-2.5 bg-telangana-teal text-white rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-action-teal transition-all shadow-lg active:scale-95 cursor-pointer"
             >
-              <Landmark size={14} className="md:size-[16px]" strokeWidth={3} />
+              <Landmark size={14} />
               <span>e-Procurement Portal</span>
             </a>
           </div>
         </div>
+        {scraperMessage && (
+          <div className="mt-2 mx-auto w-fit bg-dark-charcoal text-white text-[10px] font-bold px-4 py-2 rounded-lg shadow-lg">
+            {scraperMessage}
+          </div>
+        )}
       </nav>
 
       {/* Cinematic Hero Section */}
       <header className="relative h-[90vh] md:h-screen min-h-[600px] bg-hyd-night flex flex-col items-center justify-center text-center px-6 overflow-hidden">
         <div className="absolute inset-0 z-0">
-          <img 
-            src="/assets/hero-bg.png" 
-            className="w-full h-full object-cover opacity-60 scale-105"
-            alt="Telangana Infrastructure"
-          />
           <div className="absolute inset-0 bg-gradient-to-t from-hyd-night via-hyd-night/40 to-transparent" />
         </div>
 
@@ -198,7 +226,7 @@ export default function App() {
           >
             <button 
               onClick={() => scrollToContent('explorer')}
-              className="w-full sm:w-auto group px-10 md:px-12 py-5 md:py-6 bg-telangana-teal text-white rounded-2xl md:rounded-[24px] font-black text-xs md:text-sm tracking-widest uppercase shadow-2xl shadow-telangana-teal/40 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-4 cursor-pointer"
+              className="w-full sm:w-auto group px-10 py-5 bg-telangana-teal text-white rounded-2xl font-black text-xs tracking-widest uppercase shadow-2xl hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-4 cursor-pointer"
             >
               డ్యాష్‌బోర్డ్ తెరవండి (Open Ledger)
               <ArrowRight size={20} className="group-hover:translate-x-2 transition-transform" />
@@ -215,7 +243,7 @@ export default function App() {
             className="glass-dark p-10 rounded-[40px] w-80 text-left"
           >
             <div className="flex items-center gap-4 mb-8">
-              <div className="w-14 h-14 rounded-2xl bg-telangana-teal/20 flex items-center justify-center border border-telangana-teal/30 shadow-inner shadow-telangana-teal/10">
+              <div className="w-14 h-14 rounded-2xl bg-telangana-teal/20 flex items-center justify-center border border-telangana-teal/30">
                 <LayoutGrid size={28} className="text-telangana-teal" />
               </div>
               <div>
@@ -245,6 +273,16 @@ export default function App() {
 
       {/* Main Content Section */}
       <main ref={contentRef} className="max-w-[1500px] mx-auto w-full px-4 md:px-6 py-12 md:py-24 min-h-[100vh] space-y-12">
+        <div className="relative w-full max-w-md mb-8">
+          <input
+            type="text"
+            placeholder="Search tenders by ID or title..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-white border border-steel-gray px-4 py-3 rounded-xl outline-none text-xs font-bold text-charcoal focus:border-telangana-teal transition-all"
+          />
+        </div>
+
         <AnimatePresence mode="wait">
           {activeTab === 'explorer' && (
             <motion.div 
@@ -275,11 +313,11 @@ export default function App() {
                   <div className="flex items-center justify-between">
                     <div>
                       <h2 className="text-2xl md:text-3xl font-black text-dark-charcoal tracking-tight">లైవ్ లెడ్జర్ ఫీడ్ (Live Contracts Ledger)</h2>
-                      <p className="text-xs font-bold text-medium-gray mt-1">Showing {filteredProjects.length} filtered projects</p>
+                      <p className="text-xs font-bold text-medium-gray mt-1">Showing {projects.length} filtered projects</p>
                     </div>
                   </div>
 
-                  {filteredProjects.length === 0 ? (
+                  {projects.length === 0 ? (
                     <div className="py-20 md:py-32 px-6 md:px-10 bg-off-white rounded-[32px] border-2 border-dashed border-steel-gray text-center">
                       <Landmark size={40} className="mx-auto mb-6 text-medium-gray" />
                       <h3 className="text-xl md:text-2xl font-black text-dark-charcoal mb-2 serif-font">ప్రాజెక్ట్‌లు కనుగొనబడలేదు...</h3>
@@ -287,7 +325,7 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {filteredProjects.map((project) => (
+                      {projects.map((project) => (
                         <motion.div 
                           key={project.id}
                           layout
@@ -299,7 +337,7 @@ export default function App() {
                               <span className={`px-2.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded-full border ${statusColors[project.status]}`}>
                                 {statusLabels[project.status]}
                               </span>
-                              <span className="text-[9px] font-bold text-medium-gray uppercase tracking-widest">{project.tenderId}</span>
+                              <span className="text-[9px] font-bold text-medium-gray uppercase tracking-widest">{project.id}</span>
                             </div>
                             <h3 className="font-black text-sm text-charcoal group-hover:text-telangana-teal transition-colors line-clamp-2 leading-snug">
                               {project.title}
@@ -318,7 +356,7 @@ export default function App() {
                             <div className="flex items-center justify-between text-xs mt-3 bg-off-white px-3 py-2 rounded-xl border border-steel-gray/40">
                               <span className="font-semibold text-medium-gray">Amount:</span>
                               <span className="font-black text-dark-charcoal">
-                                {project.finalAwardAmount ? formatCurrency(project.finalAwardAmount) : formatCurrency(project.sanctionedAmount)}
+                                {formatCurrency(project.tenderValue)}
                               </span>
                             </div>
                           </div>
@@ -333,22 +371,10 @@ export default function App() {
                   <div className="lg:sticky lg:top-32">
                     <div className="h-[400px] md:h-[500px] lg:h-[750px] w-full rounded-[32px] overflow-hidden shadow-3xl shadow-dark-charcoal/10 border border-steel-gray relative group">
                       <Map 
-                        projects={filteredProjects} 
+                        projects={projects} 
                         onMarkerClick={setSelectedProject} 
                         selectedDistrict={selectedDistrict}
                       />
-                    </div>
-                    
-                    <div className="hidden md:flex mt-8 p-6 bg-off-white rounded-[24px] border border-steel-gray gap-4 items-start">
-                      <div className="w-10 h-10 rounded-xl bg-white border border-steel-gray flex items-center justify-center shrink-0">
-                        <Info size={18} className="text-telangana-teal" />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black text-dark-charcoal uppercase tracking-[0.1em] mb-1">డ్యాష్‌బోర్డ్ చిట్కా (Dashboard Guide)</h4>
-                        <p className="text-[11px] font-bold text-medium-gray leading-relaxed">
-                          Click map markers to preview tender details. Toggle status, departments, and budget ranges to analyze procurement trends.
-                        </p>
-                      </div>
                     </div>
                   </div>
                 </section>
@@ -397,7 +423,7 @@ export default function App() {
                  <div className="space-y-4">
                    {Array.from(new Set(projects.map(p => p.department))).map((dept) => {
                      const deptProjects = projects.filter(p => p.department === dept);
-                     const deptBudget = deptProjects.reduce((sum, p) => sum + p.sanctionedAmount, 0);
+                     const deptBudget = deptProjects.reduce((sum, p) => sum + p.tenderValue, 0);
                      const percentage = stats.totalSanctionedValue > 0 ? (deptBudget / stats.totalSanctionedValue) * 100 : 0;
                      return (
                        <div key={dept} className="space-y-2">
@@ -427,7 +453,7 @@ export default function App() {
                <h2 className="text-3xl md:text-4xl font-black text-dark-charcoal mb-6 serif-font">మన మ్యాప్ టెండర్ లెడ్జర్ (ManaMap Ledger)</h2>
                <div className="space-y-6 text-sm font-bold text-medium-gray text-left leading-relaxed">
                   <p>ManaMap Infrastructure Ledger is a public platform that tracks and maps municipal infrastructure projects, construction contracts, and road works across Telangana.</p>
-                  <p>By compiling data from the Telangana eProcurement and Central CPPP platforms, we empower citizens, researchers, and administrators with clear spatial visualization, contractor portfolios, and AI summaries of engineering projects.</p>
+                  <p>By compiling data from the Telangana eProcurement and Central CPPP platforms, we empower citizens, researchers, and administrators with clear spatial visualization.</p>
                </div>
             </motion.div>
           )}
@@ -438,7 +464,6 @@ export default function App() {
               <h2 className="text-3xl font-black text-dark-charcoal mb-8 serif-font">Privacy Policy</h2>
               <div className="space-y-6 text-medium-gray font-bold text-sm leading-relaxed">
                 <p>ManaMap is dedicated to open transparency. All data presented on this platform is retrieved from public procurement logs and government websites.</p>
-                <p>We do not collect personal information from visitors, and all geolocation structures are mapped according to official project boundaries.</p>
               </div>
             </motion.div>
           )}

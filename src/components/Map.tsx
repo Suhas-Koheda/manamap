@@ -37,7 +37,7 @@ const customIcon = (status: 'open' | 'awarded' | 'completed') => {
 };
 
 function MapEventsHandler({ onClick }: { onClick?: (lat: number, lng: number) => void }) {
-  const map = useMapEvents({
+  useMapEvents({
     click: (e) => {
       if (onClick) onClick(e.latlng.lat, e.latlng.lng);
     },
@@ -179,7 +179,7 @@ export default function Map({ projects, onMarkerClick, onMapClick, selectedDistr
                       {proj.title}
                     </h4>
                     <p className="text-[9px] font-bold text-medium-gray tracking-wider uppercase">
-                      Tender ID: {proj.tenderId}
+                      Tender ID: {proj.id}
                     </p>
                   </div>
                   
@@ -191,7 +191,7 @@ export default function Map({ projects, onMarkerClick, onMapClick, selectedDistr
                     <div className="flex items-center gap-1.5 text-[10px] text-charcoal font-bold">
                       <BadgeIndianRupee size={12} className="text-telangana-teal" />
                       <span>
-                        Cost: {formatCurrency(proj.finalAwardAmount || proj.sanctionedAmount)}
+                        Cost: {formatCurrency(proj.tenderValue)}
                       </span>
                     </div>
                   </div>
@@ -241,4 +241,3 @@ export default function Map({ projects, onMarkerClick, onMapClick, selectedDistr
     </div>
   );
 }
-

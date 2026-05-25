@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.db.session import init_db
-from backend.api.routers import tenders, contractors, analytics, scraper
+from backend.api.routers import tenders, districts, departments, scraper
 import logging
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -16,16 +16,16 @@ app = FastAPI(
 # Set up CORS middleware for Vite React app
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust for production security, e.g. ["http://localhost:3000"]
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Register routers
+# Register simplified routers
 app.include_router(tenders.router)
-app.include_router(contractors.router)
-app.include_router(analytics.router)
+app.include_router(districts.router)
+app.include_router(departments.router)
 app.include_router(scraper.router)
 
 @app.on_event("startup")
@@ -38,7 +38,7 @@ def on_startup():
 def read_root():
     return {
         "status": "healthy",
-        "service": "ManaMap Ledger Procurement Intelligence Platform",
+        "service": "ManaMap Ledger Ingestion API",
         "docs": "/docs"
     }
 
