@@ -35,9 +35,14 @@ class TelanganaTenderScraper:
         logger.info("Initializing session on Telangana eProcurement portal...")
         try:
             # Hit homepage to get JSESSIONID and Gateway affinity cookies
-            response = await self.client.get("https://tender.telangana.gov.in/", headers=self.headers, timeout=15.0)
+            await self.client.get("https://tender.telangana.gov.in/", headers=self.headers, timeout=20.0)
             cookies = [f"{c.name}={c.value}" for c in self.client.cookies.jar]
-            logger.info(f"Established session cookies: {', '.join(cookies)}")
+            logger.info(f"Established base cookies: {', '.join(cookies)}")
+            
+            # Must also hit TenderDetailsHome.html via POST to activate session permissions
+            logger.info("Visiting TenderDetailsHome.html via POST to finalize session...")
+            await self.client.post("https://tender.telangana.gov.in/TenderDetailsHome.html", headers=self.headers, timeout=20.0)
+            logger.info(f"Finalized session cookies: {[f'{c.name}={c.value}' for c in self.client.cookies.jar]}")
         except Exception as e:
             logger.error(f"Failed to initialize session cookies: {e}")
             raise
@@ -71,22 +76,81 @@ class TelanganaTenderScraper:
         """Queries TenderDetailsHomeJson.html for a given range of tenders."""
         url = "https://tender.telangana.gov.in/TenderDetailsHomeJson.html"
         
-        # Build DataTables query parameters (support both URL query and Form Data)
+        # Build exact query parameters matching portal advance search serialization
         params = {
-            "draw": "1",
+            "subDeptId": "",
+            "ddlDistrict": "",
+            "ddlMandal": "",
+            "biddingType": "",
+            "sProcurementType": "",
+            "mECVValue1": "",
+            "mECVValue2": "",
+            "dtBidClosingselect": "",
+            "dtBidClosing1": "",
+            "dtBidClosing2": "",
+            "dtTenderOpening1": "",
+            "dtTenderOpening2": "",
+            "nDepartmentID": "0",
+            "hdnSearch4": "",
+            "hdnSearch": "",
+            "hdncorrigendumsDetails": "",
+            "hdncorrigendumsDetails1": "",
+            "hdnnoSearch": "",
+            "hdncorrigendumsDetails2": "",
+            "hdnPreviousPage": "",
+            "hdnIndentID": "",
+            "hdnTenderCategory": "",
+            "hdnProcurementID": "",
+            "hdnType": "current",
+            "hdnPreviousPge": "TenderDetailsHome.html",
+            "hdnadvsearch": "",
+            "hdnFromStatus": "",
+            "typeOfWorkFromConsolidation": "",
+            "popUPRequestParameter": "",
+            "selectedCircleDivison": "",
+            "selectedDepartmentID": "",
+            "selectedProcurementType": "",
+            "selectedTypeofWork": "",
+            "aid": "",
+            
+            # Datatables parameters
+            "sEcho": "1",
+            "iColumns": "10",
+            "sColumns": "",
             "iDisplayStart": str(start),
             "iDisplayLength": str(length),
-            "sSearch": "",
-            "bRegex": "false"
+            "mDataProp_0": "0",
+            "mDataProp_1": "1",
+            "mDataProp_2": "2",
+            "mDataProp_3": "3",
+            "mDataProp_4": "4",
+            "mDataProp_5": "5",
+            "mDataProp_6": "6",
+            "mDataProp_7": "7",
+            "mDataProp_8": "8",
+            "mDataProp_9": "9",
+            "iSortCol_0": "5",
+            "sSortDir_0": "desc",
+            "iSortingCols": "1",
+            "bSortable_0": "true",
+            "bSortable_1": "true",
+            "bSortable_2": "true",
+            "bSortable_3": "true",
+            "bSortable_4": "true",
+            "bSortable_5": "true",
+            "bSortable_6": "true",
+            "bSortable_7": "true",
+            "bSortable_8": "true",
+            "bSortable_9": "false",
         }
         
         # Make sure session is initialized
         if not self.client.cookies.get("JSESSIONID"):
             await self.refresh_session()
             
-        # The endpoint expects POST with parameters
         try:
-            response = await self._request_with_backoff("POST", url, data=params)
+            # Query GET endpoint with Datatables parameters
+            response = await self._request_with_backoff("GET", url, params=params)
             
             try:
                 data = response.json()
