@@ -5,6 +5,7 @@ from backend.db.models import Tender, Contractor, BOQItem, TimelineEvent, AISumm
 from backend.scraper.crawler import TelanganaTenderScraper
 from backend.ai.gemini_enricher import enrich_tender_with_ai
 from datetime import datetime, timedelta
+from scraper.pipeline import DISTRICT_COORDINATES
 import random
 import logging
 
