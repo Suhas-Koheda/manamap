@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+httpx>=0.28.1
+beautifulsoup4
+google-genai
