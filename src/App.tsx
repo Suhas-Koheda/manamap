@@ -4,11 +4,56 @@ import Map from './components/Map';
 import FilterBar from './components/FilterBar';
 import ProjectDashboard from './components/ProjectDashboard';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowRight, LayoutGrid, Info, Landmark, Shield, FileText, Phone, Building2, BadgeIndianRupee, Activity, MapPin, RefreshCw } from 'lucide-react';
+import { 
+  ArrowRight, LayoutGrid, Info, Landmark, Shield, FileText, Phone, 
+  Building2, BadgeIndianRupee, Activity, MapPin, RefreshCw,
+  Terminal, Download, Database, Layers, Clock, AlertCircle, CheckCircle
+} from 'lucide-react';
 
-type TabType = 'explorer' | 'insights' | 'about' | 'privacy' | 'terms' | 'contact' | 'data';
+function ScraperTimer({ startTime, isRunning }: { startTime: string | null; isRunning: boolean }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!startTime || !isRunning) {
+      if (!startTime) setElapsed(0);
+      return;
+    }
+
+    const start = new Date(startTime).getTime();
+    setElapsed(Math.round((Date.now() - start) / 1000));
+
+    const interval = setInterval(() => {
+      setElapsed(Math.round((Date.now() - start) / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [startTime, isRunning]);
+
+  const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
+  const seconds = (elapsed % 60).toString().padStart(2, '0');
+  return <span>{minutes}:{seconds}</span>;
+}
+
+type TabType = 'explorer' | 'insights' | 'about' | 'privacy' | 'terms' | 'contact' | 'data' | 'monitor';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const WS_URL = API_URL.replace(/^http/, 'ws');
+
+interface ScraperState {
+  is_running: boolean;
+  start_time: string | null;
+  pages_processed: number;
+  tenders_processed: number;
+  tenders_saved: number;
+  documents_downloaded: number;
+  failures: number;
+  current_tender_id: string | null;
+  current_district: string | null;
+  active_download: string | null;
+  session_refreshes: number;
+  current_offset: number;
+  logs: string[];
+}
 
 export default function App() {
   const [projects, setProjects] = useState<TenderProject[]>([]);
@@ -27,8 +72,27 @@ export default function App() {
   const [scraperLoading, setScraperLoading] = useState(false);
   const [scraperMessage, setScraperMessage] = useState("");
 
+  // Live Monitor States
+  const [scraperState, setScraperState] = useState<ScraperState>({
+    is_running: false,
+    start_time: null,
+    pages_processed: 0,
+    tenders_processed: 0,
+    tenders_saved: 0,
+    documents_downloaded: 0,
+    failures: 0,
+    current_tender_id: null,
+    current_district: null,
+    active_download: null,
+    session_refreshes: 0,
+    current_offset: 0,
+    logs: []
+  });
+  const [historicalRuns, setHistoricalRuns] = useState<any[]>([]);
+
   const [activeTab, setActiveTab] = useState<TabType>('explorer');
   const contentRef = useRef<HTMLElement>(null);
+  const logTerminalRef = useRef<HTMLDivElement>(null);
 
   // Fetch Tenders
   const fetchTenders = async () => {
@@ -68,6 +132,124 @@ export default function App() {
     setSearchQuery("");
   };
 
+  const fetchRuns = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/scraper/runs`);
+      if (res.ok) {
+        const data = await res.json();
+        setHistoricalRuns(data);
+      }
+    } catch (err) {
+      console.error("Error fetching historical runs:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchRuns();
+  }, []);
+
+  // Auto-scroll logs terminal
+  useEffect(() => {
+    if (logTerminalRef.current) {
+      logTerminalRef.current.scrollTop = logTerminalRef.current.scrollHeight;
+    }
+  }, [scraperState.logs]);
+
+  // WebSocket connection management
+  useEffect(() => {
+    // Initial fetch of status
+    fetch(`${API_URL}/api/scraper/status`)
+      .then(res => res.json())
+      .then(data => {
+        if (data) setScraperState(data);
+      })
+      .catch(err => console.error("Error fetching scraper status:", err));
+
+    let ws: WebSocket;
+    let reconnectTimeout: any;
+
+    const connectWS = () => {
+      const socketUrl = `${WS_URL}/api/scraper/ws`;
+      console.log("Connecting to WebSocket:", socketUrl);
+      ws = new WebSocket(socketUrl);
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "state" && msg.state) {
+            setScraperState(msg.state);
+          } else if (msg.type === "log" && msg.message) {
+            setScraperState(prev => ({
+              ...prev,
+              logs: [...prev.logs, msg.message]
+            }));
+          } else if (msg.type === "progress") {
+            setScraperState(prev => ({
+              ...prev,
+              current_offset: msg.offset,
+              tenders_processed: msg.tenders_processed,
+              tenders_saved: msg.tenders_saved ?? prev.tenders_saved,
+              documents_downloaded: msg.documents_downloaded,
+              pages_processed: msg.pages_processed ?? prev.pages_processed
+            }));
+          } else if (msg.type === "current_tender") {
+            setScraperState(prev => ({
+              ...prev,
+              current_tender_id: msg.tender_id,
+              current_district: msg.district ?? prev.current_district
+            }));
+          } else if (msg.type === "download") {
+            setScraperState(prev => ({
+              ...prev,
+              active_download: msg.filename
+            }));
+          } else if (msg.type === "error") {
+            setScraperState(prev => ({
+              ...prev,
+              failures: prev.failures + 1,
+              logs: [...prev.logs, `[✗] Error: ${msg.message}`]
+            }));
+          } else if (msg.type === "session_refresh") {
+            setScraperState(prev => ({
+              ...prev,
+              session_refreshes: prev.session_refreshes + 1,
+              logs: [...prev.logs, `[✓] Session expired, refreshed successfully.`]
+            }));
+          }
+        } catch (err) {
+          console.error("Error parsing WebSocket message:", err);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket connection closed. Retrying in 5 seconds...");
+        reconnectTimeout = setTimeout(connectWS, 5000);
+      };
+
+      ws.onerror = (err) => {
+        console.error("WebSocket error:", err);
+        ws.close();
+      };
+    };
+
+    connectWS();
+
+    return () => {
+      if (ws) ws.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    };
+  }, []);
+
+  // Monitor scraper runs state changes to refresh historical lists
+  const prevRunningRef = useRef(false);
+  useEffect(() => {
+    if (prevRunningRef.current && !scraperState.is_running) {
+      fetchRuns();
+      fetchTenders();
+    }
+    prevRunningRef.current = scraperState.is_running;
+  }, [scraperState.is_running]);
+
   const handleTriggerScraper = async () => {
     setScraperLoading(true);
     setScraperMessage("");
@@ -76,17 +258,19 @@ export default function App() {
         method: 'POST'
       });
       if (res.ok) {
-        setScraperMessage("Aggregation pipeline triggered in background successfully.");
-        // Refresh tenders list after delay
-        setTimeout(() => fetchTenders(), 4000);
+        setScraperMessage("Scraper aggregation triggered in background.");
+        scrollToContent('monitor');
+        fetchRuns();
       } else {
-        setScraperMessage("Failed to trigger aggregation pipeline.");
+        const errData = await res.json().catch(() => ({}));
+        setScraperMessage(errData.detail || "Failed to trigger scraper run.");
       }
     } catch (err) {
       console.error("Failed to run scraper:", err);
       setScraperMessage("Failed to communicate with API server.");
     } finally {
       setScraperLoading(false);
+      setTimeout(() => setScraperMessage(""), 5000);
     }
   };
 
@@ -163,6 +347,12 @@ export default function App() {
               కాంట్రాక్ట్ విశ్లేషణ (Analytics)
             </button>
             <button 
+              onClick={() => scrollToContent('monitor')} 
+              className={`text-[10px] font-black uppercase tracking-[0.2em] transition-colors cursor-pointer ${activeTab === 'monitor' ? 'text-telangana-teal' : 'text-medium-gray hover:text-dark-charcoal'}`}
+            >
+              లైవ్ మానిటర్ (Live Monitor)
+            </button>
+            <button 
               onClick={() => scrollToContent('about')} 
               className={`text-[10px] font-black uppercase tracking-[0.2em] transition-colors cursor-pointer ${activeTab === 'about' ? 'text-telangana-teal' : 'text-medium-gray hover:text-dark-charcoal'}`}
             >
@@ -172,12 +362,21 @@ export default function App() {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={handleTriggerScraper}
-              disabled={scraperLoading}
-              className="flex items-center gap-2 px-3 py-2 bg-ash-gray hover:bg-steel-gray rounded-xl font-bold text-[9px] uppercase tracking-wider transition-all disabled:opacity-50 cursor-pointer text-dark-charcoal"
+              onClick={() => {
+                if (scraperState.is_running) {
+                  scrollToContent('monitor');
+                } else {
+                  handleTriggerScraper();
+                }
+              }}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl font-bold text-[9px] uppercase tracking-wider transition-all cursor-pointer ${
+                scraperState.is_running 
+                  ? 'bg-civic-red/10 text-civic-red hover:bg-civic-red/20 border border-civic-red/20' 
+                  : 'bg-ash-gray hover:bg-steel-gray text-dark-charcoal border border-transparent'
+              }`}
             >
-              <RefreshCw size={12} className={scraperLoading ? "animate-spin" : ""} />
-              <span>Run Scraper</span>
+              <RefreshCw size={12} className={scraperState.is_running || scraperLoading ? "animate-spin" : ""} />
+              <span>{scraperState.is_running ? "Scraping Live..." : "Run Scraper"}</span>
             </button>
             <a 
               href="https://tender.telangana.gov.in"
@@ -439,6 +638,196 @@ export default function App() {
                    })}
                  </div>
                </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'monitor' && (
+            <motion.div
+              key="monitor"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              className="space-y-8 py-6"
+            >
+              {/* Header card with state */}
+              <div className="bg-white border border-steel-gray rounded-[24px] p-6 flex flex-col md:flex-row justify-between items-center gap-4 shadow-soft">
+                <div className="flex items-center gap-4">
+                  <div className={`w-4.5 h-4.5 rounded-full ${scraperState.is_running ? 'bg-civic-red pulse' : 'bg-medium-gray'}`} />
+                  <div>
+                    <h2 className="text-xl md:text-2xl font-black text-dark-charcoal serif-font">Scraper Ingestion Monitor</h2>
+                    <p className="text-xs font-bold text-medium-gray mt-0.5">
+                      {scraperState.is_running ? "Live scraper engine is currently processing portals." : "Ingestion engine is currently idle."}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-6">
+                  <div className="flex flex-col text-right">
+                    <span className="text-[10px] font-black uppercase text-medium-gray tracking-wider">ELAPSED TIME</span>
+                    <span className="text-sm font-black text-dark-charcoal font-mono">
+                      <ScraperTimer startTime={scraperState.start_time} isRunning={scraperState.is_running} />
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleTriggerScraper}
+                    disabled={scraperState.is_running}
+                    className="flex items-center gap-2 px-6 py-3.5 bg-telangana-teal text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-action-teal transition-all disabled:opacity-50 shadow-lg active:scale-95 cursor-pointer"
+                  >
+                    <RefreshCw size={14} className={scraperState.is_running ? "animate-spin" : ""} />
+                    <span>{scraperState.is_running ? "Running..." : "Manual Start"}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Progress bar card */}
+              {scraperState.is_running && (
+                <div className="bg-white border border-steel-gray rounded-[24px] p-6 space-y-4 shadow-soft">
+                  <div className="flex justify-between items-center text-xs font-bold">
+                    <span className="text-medium-gray uppercase tracking-widest">Run Progress (Estimated 3 Pages)</span>
+                    <span className="text-telangana-teal">{Math.min(100, Math.round((scraperState.pages_processed / 3) * 100))}%</span>
+                  </div>
+                  <div className="h-3 w-full bg-ash-gray rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-telangana-teal transition-all duration-500 shadow-[0_0_8px_rgba(0,137,123,0.4)]" 
+                      style={{ width: `${Math.min(100, (scraperState.pages_processed / 3) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                <div className="bg-white p-5 rounded-[24px] border border-steel-gray shadow-subtle flex flex-col justify-between">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-medium-gray">Offset</span>
+                  <span className="text-2xl font-black text-dark-charcoal mt-2 font-mono">{scraperState.current_offset}</span>
+                </div>
+                <div className="bg-white p-5 rounded-[24px] border border-steel-gray shadow-subtle flex flex-col justify-between">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-medium-gray">Tenders Scraped</span>
+                  <span className="text-2xl font-black text-dark-charcoal mt-2 font-mono">{scraperState.tenders_processed}</span>
+                </div>
+                <div className="bg-white p-5 rounded-[24px] border border-steel-gray shadow-subtle flex flex-col justify-between">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-medium-gray">Tenders Saved</span>
+                  <span className="text-2xl font-black text-explore-blue mt-2 font-mono">{scraperState.tenders_saved}</span>
+                </div>
+                <div className="bg-white p-5 rounded-[24px] border border-steel-gray shadow-subtle flex flex-col justify-between">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-medium-gray">Downloads</span>
+                  <span className="text-2xl font-black text-success-green mt-2 font-mono">{scraperState.documents_downloaded}</span>
+                </div>
+                <div className="bg-white p-5 rounded-[24px] border border-steel-gray shadow-subtle flex flex-col justify-between">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-medium-gray">Failures</span>
+                  <span className={`text-2xl font-black mt-2 font-mono ${scraperState.failures > 0 ? 'text-civic-red animate-pulse' : 'text-dark-charcoal'}`}>{scraperState.failures}</span>
+                </div>
+                <div className="bg-white p-5 rounded-[24px] border border-steel-gray shadow-subtle flex flex-col justify-between">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-medium-gray">Refreshes</span>
+                  <span className="text-2xl font-black text-amber-gold mt-2 font-mono">{scraperState.session_refreshes}</span>
+                </div>
+              </div>
+
+              {/* Current tender processing card */}
+              {scraperState.is_running && scraperState.current_tender_id && (
+                <div className="bg-white border border-steel-gray rounded-[24px] p-6 space-y-4 shadow-soft">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-medium-gray">Active Ingestion Target</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="p-4 bg-off-white rounded-2xl border border-steel-gray/60">
+                      <span className="text-[9px] font-black uppercase text-medium-gray block tracking-widest">Tender ID</span>
+                      <span className="text-sm font-black text-dark-charcoal mt-1 block font-mono">{scraperState.current_tender_id}</span>
+                    </div>
+                    <div className="p-4 bg-off-white rounded-2xl border border-steel-gray/60">
+                      <span className="text-[9px] font-black uppercase text-medium-gray block tracking-widest">District</span>
+                      <span className="text-sm font-black text-dark-charcoal mt-1 block">{scraperState.current_district || "Scanning..."}</span>
+                    </div>
+                    <div className="p-4 bg-off-white rounded-2xl border border-steel-gray/60">
+                      <span className="text-[9px] font-black uppercase text-medium-gray block tracking-widest">Downloading File</span>
+                      <span className="text-sm font-black text-success-green mt-1 truncate block font-mono">{scraperState.active_download || "Waiting..."}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Logs Monitor Terminal */}
+              <div className="bg-dark-charcoal text-white rounded-[24px] p-6 shadow-2xl relative overflow-hidden flex flex-col h-[420px] border border-white/5">
+                <div className="flex justify-between items-center border-b border-white/10 pb-4 mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-civic-red" />
+                    <div className="w-3 h-3 rounded-full bg-amber-gold" />
+                    <div className="w-3 h-3 rounded-full bg-success-green" />
+                    <span className="text-xs font-mono font-bold text-white/40 ml-2">live-scraper-terminal.log</span>
+                  </div>
+                  <button 
+                    onClick={() => setScraperState(prev => ({ ...prev, logs: [] }))}
+                    className="text-[10px] font-black uppercase tracking-wider text-white/60 hover:text-white"
+                  >
+                    Clear Logs
+                  </button>
+                </div>
+                <div 
+                  ref={logTerminalRef}
+                  className="flex-1 overflow-y-auto font-mono text-[11px] space-y-1.5 pr-2 select-text selection:bg-telangana-teal selection:text-white"
+                >
+                  {scraperState.logs.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-white/20 select-none">
+                      [Terminal waiting for scraper events...]
+                    </div>
+                  ) : (
+                    scraperState.logs.map((log, index) => {
+                      const isCheck = log.includes("[✓]");
+                      const isCross = log.includes("[✗]");
+                      const isWarn = log.includes("[!]");
+                      let textColor = "text-white/80";
+                      if (isCheck) textColor = "text-success-green";
+                      else if (isCross) textColor = "text-civic-red font-bold";
+                      else if (isWarn) textColor = "text-amber-gold font-semibold";
+                      return (
+                        <div key={index} className={`leading-relaxed whitespace-pre-wrap ${textColor}`}>
+                          {log}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Historical Runs Table */}
+              <div className="bg-white border border-steel-gray rounded-[24px] p-6 space-y-6 shadow-soft">
+                <h3 className="text-sm font-black uppercase tracking-widest text-dark-charcoal">Historical Ingestion Runs</h3>
+                {historicalRuns.length === 0 ? (
+                  <p className="text-xs font-bold text-medium-gray py-4">No historical runs recorded in database ledger.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-steel-gray/60 text-[10px] font-black uppercase tracking-wider text-medium-gray">
+                          <th className="py-3 pr-4">Run ID</th>
+                          <th className="py-3 px-4">Started At</th>
+                          <th className="py-3 px-4">Finished At</th>
+                          <th className="py-3 px-4">Status</th>
+                          <th className="py-3 px-4 text-right">Tenders Saved</th>
+                          <th className="py-3 px-4 text-right">Downloads</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {historicalRuns.map((run) => (
+                          <tr key={run.id} className="border-b border-steel-gray/30 text-xs font-bold text-charcoal hover:bg-off-white transition-colors">
+                            <td className="py-3.5 pr-4 font-mono text-telangana-teal">#{run.id}</td>
+                            <td className="py-3.5 px-4 font-mono text-[11px]">{run.started_at || "N/A"}</td>
+                            <td className="py-3.5 px-4 font-mono text-[11px]">{run.finished_at || "In Progress"}</td>
+                            <td className="py-3.5 px-4">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                run.status === 'completed' ? 'bg-success-green/10 text-success-green border border-success-green/20' : 
+                                run.status === 'failed' ? 'bg-civic-red/10 text-civic-red border border-civic-red/20' : 
+                                'bg-explore-blue/10 text-explore-blue border border-explore-blue/20 animate-pulse'
+                              }`}>
+                                {run.status}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 text-right font-mono">{run.tenders_processed}</td>
+                            <td className="py-3.5 px-4 text-right font-mono">{run.documents_downloaded}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </motion.div>
           )}
 

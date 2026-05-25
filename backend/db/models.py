@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, DateTime, Text, JSON
+from sqlalchemy import Column, String, Float, DateTime, Text, JSON, Integer
 from sqlalchemy.orm import declarative_base
 from datetime import datetime
 
@@ -48,3 +48,20 @@ class Tender(Base):
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ScraperRun(Base):
+    __tablename__ = 'scraper_runs'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    started_at = Column(DateTime, default=datetime.utcnow)
+    finished_at = Column(DateTime, nullable=True)
+    status = Column(String, default='running')  # running, completed, failed
+    pages_processed = Column(Integer, default=0)
+    tenders_processed = Column(Integer, default=0)
+    documents_downloaded = Column(Integer, default=0)
+    failures = Column(Integer, default=0)
+    current_tender_id = Column(String, nullable=True)
+    current_offset = Column(Integer, default=0)
+    logs = Column(Text, default='')
+

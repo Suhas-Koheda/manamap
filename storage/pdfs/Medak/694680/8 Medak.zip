@@ -1,0 +1,184 @@
+
+
+
+
+
+
+<html>
+<head>
+<script type="text/javascript" src="./views/script/jquery-1.6.4.js?ver=2016"></script>
+<link rel="stylesheet" href="./views/css/common.css" />
+<script type="text/javascript" src="./views/script/eseva.js?ver=2016"></script>
+<script type="text/javascript">
+function funLogin(){
+	document.loginForm.action = "login.html";
+	document.loginForm.method = "POST";
+	document.loginForm.submit();
+}</script>
+</head>
+
+ <body >
+<body topmargin="0" leftmargin="0" >
+	
+	    
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+<title>:: Telangana eProcurement Portal ::</title>
+    <link href="/views/themes/currenttheme/style_new.css"
+	rel="stylesheet" type="text/css" />
+    <script src="/views/PagerFiles/jquery-latest.min.js?ver=2016"></script>
+	<link rel="stylesheet" href="/views/PagerFiles/theme.blue.css">
+	<script src="/views/PagerFiles/jquery.tablesorter.js?ver=2016"></script>
+	<link rel="stylesheet" href="/views/PagerFiles/jquery.tablesorter.pager.css">
+	<script src="/views/PagerFiles/jquery.tablesorter.pager.js?ver=2016"></script>
+	
+<script id="js">$(function(){
+	var pagerOptions = {		
+		container: $(".pager"),
+		size: 10
+
+	};
+	$("#pagetable")		
+		.tablesorter({
+			theme: 'blue',
+			widthFixed: true,
+			widgets: ['zebra']
+		})
+		.tablesorterPager(pagerOptions);
+
+});</script>
+		<script type="text/javascript">
+
+	$(document).ready(function() {		
+		$(".GridBG tbody tr:even").addClass("GridEvenRow");
+		$(".GridBG tbody tr:odd").addClass("GridOddRow");
+		$(".DescBG td:even").addClass("GridEvenRow");
+		$(".DescBG td:odd").addClass("GridOddRow");
+		$(".TenderHeadeBG tr:even").addClass("GridEvenRow");
+		$(".TenderHeadeBG tr:odd").addClass("GridOddRow");			
+	}); 
+</script>
+</head>
+<body>
+
+   <iframe name='gToday:datetime:agenda.js:gfPop:plugins_12.js'
+			id='gToday:datetime:agenda.js:gfPop:plugins_12.js'
+			src='/views/Calender/ipopengDTP.htm' scrolling='no'
+			frameborder='0' class="CalFrame"> </iframe>
+
+		<iframe name='gToday:datetime:agenda.js:gfPop1:plugins.js'
+			id='gToday:datetime:agenda.js:gfPop1:plugins.js'
+			src='/views/Calender/ipopengDTP.htm' scrolling='no'
+			frameborder='0' class="CalFrame"> </iframe>
+
+
+		<iframe name='gToday:datetime:agenda.js:gfPop2:pluginsDateTime.js'
+			id='gToday:datetime:agenda.js:gfPop2:pluginsDateTime.js'
+			src='/views/Calender/ipopengDTP.htm' scrolling='no'
+			frameborder='0' class="CalFrame"> </iframe>
+			
+<header class="tsHeader">
+
+			<img src="/views/themes/latestTheme/homepage/images/header1.jpg" title="Welcome to Telangana State eProcurement Portal" alt="Welcome to Telangana State eProcurement Portal" width="100%" id="tsHeaderImg">
+
+		</header>
+
+
+</body>
+</html>
+    		
+<form id="loginForm" name="loginForm">
+
+ <table cellpadding="0" cellspacing="0" width="98%" align="center">
+        	<tr>
+            	<td width="1%" nowrap="nowrap" valign="top">
+                <img src="views/themes/currenttheme/images/LeftCurve.gif" />
+            	</td>
+            	<td width="3%" valign="middle" nowrap="nowrap" class="GridHeader">
+                <span id="VTMSBodyContent_Label4">Error  </span>
+           		 </td>
+           		 <td width="1%" nowrap="nowrap" valign="top">
+                <img src="views/themes/currenttheme/images/RightCurve.gif" />
+           		 </td>
+            	<td width="95%" align="right" valign="top" class="Text">
+            	</td>
+        	</tr>
+   			 </table>
+   			 
+   			 
+   			 
+   			 
+   			   <table border="0" width="70%" cellspacing="0" cellpadding="0" >
+          <tr>
+            <td width="100%">
+              <table border="0" width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td width="100%" bgcolor="#F0FFFA" height="20" colspan="2">&nbsp;</td>
+                </tr>
+                <tr>
+                  <td width="100%" bgcolor="#F0FFFA" height="20" colspan="2">
+                    <p align="center"> <b><font size="4" face="Arial" >
+                     Couldn't Process  
+      Request : Please log in again</font></b></td>
+                </tr>
+                <tr>
+                  <td width="100%" height="20"  colspan="2"></td>
+                </tr>
+                <tr>
+                  <td width="100%"  align="center">
+                    
+                    </td>
+                </tr>
+                <tr>
+                  <td width="100%" height="20"  colspan="2">&nbsp;</td>
+                </tr>
+                <tr>
+                  <td width="100%" height="20" align="center" colspan="2"></td>
+                </tr>
+                <tr>
+                  <td width="100%" align="center" height="20"  colspan="2">&nbsp;</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+   			 
+  <table>
+  <tr>
+    <td width="100%" >&nbsp;</td>
+  </tr>
+
+  <tr>
+        
+  <td width="100%" align='center'><a href='#' onclick="funLogin()">Go-Back To Home Page</a></td>
+  <!--   <td width="100%" align='center'><input type="button" value="Back" name="backBtn" onClick="javaScript:window.history.back()"></td> -->
+  </tr>
+
+  <tr>
+    <td width="100%"></td>
+  </tr>
+
+  <tr>
+    <td width="100%"></td>
+  </tr>
+
+  <tr>
+    <td width="100%"></td>
+  </tr>
+
+  <tr>
+    <td width="100%"></td>
+  </tr>
+
+  <tr>
+    <td width="100%"></td>
+  </tr>
+  
+  
+</table>
+
+</form>
+</body>
+</html>

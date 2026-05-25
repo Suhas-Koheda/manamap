@@ -55,9 +55,15 @@ def on_startup():
     logger.info("Scheduled scraper job registered for 15-minute intervals.")
 
 @app.on_event("shutdown")
-def on_shutdown():
+async def on_shutdown():
     logger.info("Shutting down background scheduler...")
     scheduler.shutdown()
+    try:
+        from backend.scraper.crawler import browser_manager
+        logger.info("Shutting down browser contexts...")
+        await browser_manager.close()
+    except Exception as e:
+        logger.error(f"Error closing browser contexts: {e}")
 
 @app.get("/")
 def read_root():
