@@ -103,6 +103,112 @@ export default function ProjectDashboard({ project, onClose }: ProjectDashboardP
           </div>
         </div>
 
+        {/* Infrastructure / Road Intelligence Details */}
+        {(project.roadName || project.village || project.mandal || project.chainageStart) && (
+          <div className="border border-steel-gray/60 rounded-xl p-4 space-y-3">
+            <h3 className="text-[10px] font-black text-dark-charcoal uppercase tracking-widest border-b border-steel-gray/40 pb-2">
+              ఇన్ఫ్రాస్ట్రక్చర్ వివరాలు (Infrastructure Details)
+            </h3>
+            <div className="space-y-2.5 text-xs">
+              {project.roadName && (
+                <div className="flex flex-col">
+                  <span className="text-[9px] uppercase tracking-wider text-medium-gray font-bold">Road Name</span>
+                  <span className="font-bold text-dark-charcoal">{project.roadName}</span>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                {project.village && (
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-medium-gray font-bold">Village</span>
+                    <p className="font-bold text-dark-charcoal">{project.village}</p>
+                  </div>
+                )}
+                {project.mandal && (
+                  <div>
+                    <span className="text-[9px] uppercase tracking-wider text-medium-gray font-bold">Mandal</span>
+                    <p className="font-bold text-dark-charcoal">{project.mandal}</p>
+                  </div>
+                )}
+              </div>
+              {project.chainageStart && (
+                <div className="flex flex-col">
+                  <span className="text-[9px] uppercase tracking-wider text-medium-gray font-bold">Chainage (Distance Markings)</span>
+                  <span className="font-bold text-dark-charcoal">
+                    km {project.chainageStart} to km {project.chainageEnd || 'End'}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Extracted Document Files Section */}
+        {(project.nitPdfUrl || project.boqPdfUrl || project.pdfUrl || project.detailPageUrl) && (
+          <div className="border border-steel-gray/60 rounded-xl p-4 space-y-3">
+            <h3 className="text-[10px] font-black text-dark-charcoal uppercase tracking-widest border-b border-steel-gray/40 pb-2">
+              డౌన్‌లోడ్ పత్రాలు (Download Documents)
+            </h3>
+            <div className="flex flex-col gap-2">
+              {project.detailPageUrl && (
+                <a
+                  href={project.detailPageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between p-2.5 bg-off-white hover:bg-ash-gray border border-steel-gray/40 rounded-lg text-xs font-bold text-charcoal transition-all"
+                >
+                  <span>Detail Page on Portal</span>
+                  <ExternalLink size={12} className="text-telangana-teal" />
+                </a>
+              )}
+              {project.pdfUrl && (
+                <a
+                  href={project.pdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between p-2.5 bg-off-white hover:bg-ash-gray border border-steel-gray/40 rounded-lg text-xs font-bold text-charcoal transition-all"
+                >
+                  <span>Official Tender Document</span>
+                  <ExternalLink size={12} className="text-telangana-teal" />
+                </a>
+              )}
+              {project.nitPdfUrl && (
+                <a
+                  href={project.nitPdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between p-2.5 bg-off-white hover:bg-ash-gray border border-steel-gray/40 rounded-lg text-xs font-bold text-charcoal transition-all"
+                >
+                  <span>Notice Inviting Tender (NIT) PDF</span>
+                  <ExternalLink size={12} className="text-telangana-teal" />
+                </a>
+              )}
+              {project.boqPdfUrl && (
+                <a
+                  href={project.boqPdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between p-2.5 bg-off-white hover:bg-ash-gray border border-steel-gray/40 rounded-lg text-xs font-bold text-charcoal transition-all"
+                >
+                  <span>Bill of Quantities (BOQ) Schedule</span>
+                  <ExternalLink size={12} className="text-telangana-teal" />
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Extracted Text View */}
+        {project.extractedText && (
+          <div className="border border-steel-gray/60 rounded-xl overflow-hidden">
+            <div className="px-4 py-3 bg-off-white border-b border-steel-gray/60 text-xs font-black uppercase tracking-widest text-dark-charcoal">
+              Extracted Document Text
+            </div>
+            <div className="p-4 bg-off-white/40 text-charcoal text-[11px] font-mono whitespace-pre-wrap max-h-60 overflow-y-auto leading-relaxed">
+              {project.extractedText}
+            </div>
+          </div>
+        )}
+
         {/* Raw Payload Debugger / Citizen Transparency */}
         {project.rawPayload && (
           <div className="border border-steel-gray/60 rounded-xl overflow-hidden">
@@ -122,19 +228,6 @@ export default function ProjectDashboard({ project, onClose }: ProjectDashboardP
               </pre>
             )}
           </div>
-        )}
-
-        {/* View PDF Button */}
-        {project.pdfUrl && (
-          <a
-            href={project.pdfUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 w-full py-4 bg-dark-charcoal hover:bg-charcoal text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg cursor-pointer animate-pulse"
-          >
-            టెండర్ పత్రం (View Official PDF Document)
-            <ExternalLink size={14} />
-          </a>
         )}
       </div>
     </div>

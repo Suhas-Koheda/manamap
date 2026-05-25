@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.db.session import init_db
+from backend.db.session import init_db, SessionLocal
 from backend.api.routers import tenders, districts, departments, scraper
+from backend.api.routers.scraper import run_scraper_task
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import logging
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -28,11 +30,34 @@ app.include_router(districts.router)
 app.include_router(departments.router)
 app.include_router(scraper.router)
 
+scheduler = AsyncIOScheduler()
+
+async def scheduled_scraper_job():
+    logger.info("Starting scheduled scraper run (15 minute interval)...")
+    db = SessionLocal()
+    try:
+        await run_scraper_task(db)
+        logger.info("Scheduled scraper run completed successfully.")
+    except Exception as e:
+        logger.error(f"Error in scheduled scraper run: {e}")
+    finally:
+        db.close()
+
 @app.on_event("startup")
 def on_startup():
-    logger.info("Initializing database and seeding base metrics...")
+    logger.info("Initializing database...")
     init_db()
     logger.info("Database initialized successfully.")
+    
+    logger.info("Starting APScheduler background tasks...")
+    scheduler.add_job(scheduled_scraper_job, "interval", minutes=15, id="scraper_job")
+    scheduler.start()
+    logger.info("Scheduled scraper job registered for 15-minute intervals.")
+
+@app.on_event("shutdown")
+def on_shutdown():
+    logger.info("Shutting down background scheduler...")
+    scheduler.shutdown()
 
 @app.get("/")
 def read_root():

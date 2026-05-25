@@ -25,7 +25,7 @@ def init_db():
     
     db = SessionLocal()
     try:
-        from scraper.pipeline import DISTRICT_COORDINATES
+        from backend.constants.districts import DISTRICT_COORDINATES
         
         # Seed Districts
         if db.query(District).count() == 0:

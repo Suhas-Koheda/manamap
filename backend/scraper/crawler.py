@@ -2,8 +2,16 @@ import asyncio
 import httpx
 import random
 import logging
+import os
+import re
+import zipfile
 from datetime import datetime
 import urllib3
+from bs4 import BeautifulSoup
+try:
+    from pypdf import PdfReader
+except ImportError:
+    PdfReader = None
 
 # Suppress urllib3 warnings for self-signed certificates on government portal
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -21,7 +29,7 @@ class TelanganaTenderScraper:
     def __init__(self, max_retries: int = 5, base_delay: float = 2.0):
         self.max_retries = max_retries
         self.base_delay = base_delay
-        self.client = httpx.AsyncClient(verify=False, follow_redirects=False)
+        self.client = httpx.AsyncClient(follow_redirects=False, timeout=30.0)
         self.headers = {
             "User-Agent": random.choice(USER_AGENTS),
             "Accept": "application/json, text/javascript, */*; q=0.01",
@@ -164,6 +172,151 @@ class TelanganaTenderScraper:
         except Exception as e:
             logger.error(f"Error executing request at offset {start}: {e}")
             raise
+
+    async def fetch_tender_details(self, indent_id: str, category_id: str, procurement_id: str) -> dict:
+        """Fetches structured text fields from ViewTender.html details page."""
+        url = "https://tender.telangana.gov.in/ViewTender.html"
+        data = {
+            "popUPRequestParameter": "popUPRequestParameter",
+            "hdnPreviousPage": "TenderDetailsHome.html",
+            "hdnIndentID": indent_id,
+            "hdnTenderCategory": category_id,
+            "hdnProcurementID": procurement_id
+        }
+        
+        detail_fields = {}
+        try:
+            logger.info(f"Fetching tender details for Indent ID: {indent_id}...")
+            response = await self._request_with_backoff("POST", url, data=data)
+            soup = BeautifulSoup(response.text, "html.parser")
+            
+            # Find all table rows containing labels and values
+            for row in soup.find_all("tr"):
+                cells = row.find_all("td")
+                if len(cells) >= 2:
+                    lbl = cells[0].get_text(strip=True).replace(":", "")
+                    val = cells[1].get_text(strip=True)
+                    if lbl:
+                        detail_fields[lbl] = val
+                        
+            logger.info(f"Successfully scraped details with {len(detail_fields)} keys.")
+        except Exception as e:
+            logger.error(f"Failed to fetch tender details for indent {indent_id}: {e}")
+            
+        return detail_fields
+
+    async def fetch_tender_documents_list(self, indent_id: str, procurement_id: str) -> list:
+        """Fetches the list of document download arguments from ViewTenderDocuments.html."""
+        url = "https://tender.telangana.gov.in/ViewTenderDocuments.html"
+        data = {
+            "popUPRequestParameter": "popUPRequestParameter",
+            "hdnFromStatus": "moretenders",
+            "hdnProcurementID": procurement_id,
+            "hdnIndentID": indent_id,
+            "hdnPreviousPage": "TenderDetailsHome.html"
+        }
+        
+        docs = []
+        try:
+            logger.info(f"Fetching tender documents list for Indent ID: {indent_id}...")
+            response = await self._request_with_backoff("POST", url, data=data)
+            soup = BeautifulSoup(response.text, "html.parser")
+            
+            # Find download action links: e.g. downloadFun('850890','8 Medak.zip','TenderDocuments')
+            # Look for <a> tags with onclick attributes calling downloadFun
+            for a in soup.find_all("a", onclick=True):
+                onclick = a["onclick"]
+                match = re.search(r"downloadFun\s*\(\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*'([^']+)'\s*\)", onclick)
+                if match:
+                    doc_id = match.group(1)
+                    doc_name = match.group(2)
+                    path_type = match.group(3)
+                    docs.append({
+                        "doc_id": doc_id,
+                        "doc_name": doc_name,
+                        "path_type": path_type,
+                        "title": a.get_text(strip=True) or doc_name
+                    })
+            logger.info(f"Found {len(docs)} downloadable document attachments.")
+        except Exception as e:
+            logger.error(f"Failed to fetch document list for indent {indent_id}: {e}")
+            
+        return docs
+
+    async def download_document(self, doc_id: str, doc_name: str, path_type: str, dest_dir: str) -> str:
+        """Downloads document attachment and saves it locally. Returns the local filepath."""
+        url = "https://tender.telangana.gov.in/DownLoadFile.html"
+        data = {
+            "hdndocIds": doc_id,
+            "hdndocName": doc_name,
+            "hdnsPath": path_type
+        }
+        
+        os.makedirs(dest_dir, exist_ok=True)
+        filepath = os.path.join(dest_dir, doc_name)
+        
+        try:
+            logger.info(f"Downloading {doc_name} (ID: {doc_id}) to {filepath}...")
+            response = await self._request_with_backoff("POST", url, data=data)
+            
+            # Write bytes to local file
+            with open(filepath, "wb") as f:
+                f.write(response.content)
+            logger.info(f"Downloaded {len(response.content)} bytes to {filepath}.")
+            return filepath
+        except Exception as e:
+            logger.error(f"Failed to download document {doc_name}: {e}")
+            return ""
+
+    def extract_text_from_file(self, filepath: str) -> str:
+        """Extracts plain text content from PDF or ZIP files (extracting PDFs inside)."""
+        if not filepath or not os.path.exists(filepath):
+            return ""
+            
+        text_content = []
+        
+        # 1. Handle PDF files
+        if filepath.lower().endswith(".pdf"):
+            text_content.append(self._read_pdf_text(filepath))
+            
+        # 2. Handle ZIP files
+        elif filepath.lower().endswith(".zip"):
+            try:
+                extract_dir = filepath + "_extracted"
+                os.makedirs(extract_dir, exist_ok=True)
+                with zipfile.ZipFile(filepath, 'r') as zip_ref:
+                    zip_ref.extractall(extract_dir)
+                    
+                # Walk through extracted files and read any PDFs
+                for root, dirs, files in os.walk(extract_dir):
+                    for file in files:
+                        if file.lower().endswith(".pdf"):
+                            pdf_path = os.path.join(root, file)
+                            text_content.append(f"--- Document: {file} ---\n")
+                            text_content.append(self._read_pdf_text(pdf_path))
+                            
+            except Exception as e:
+                logger.error(f"Failed to extract zip file {filepath}: {e}")
+                
+        return "\n".join(text_content)
+
+    def _read_pdf_text(self, pdf_path: str) -> str:
+        """Reads plain text from PDF using pypdf."""
+        if not PdfReader:
+            logger.warning("pypdf is not installed. Text extraction skipped.")
+            return ""
+            
+        text = []
+        try:
+            reader = PdfReader(pdf_path)
+            for i, page in enumerate(reader.pages):
+                page_text = page.extract_text()
+                if page_text:
+                    text.append(page_text)
+            return "\n".join(text)
+        except Exception as e:
+            logger.error(f"Failed to parse PDF text from {pdf_path}: {e}")
+            return ""
 
     async def close(self):
         await self.client.aclose()

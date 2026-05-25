@@ -8,6 +8,16 @@ export interface TenderProject {
   publicationDate: string | null;
   status: 'open' | 'awarded' | 'completed';
   pdfUrl: string | null;
+  nitPdfUrl: string | null;
+  boqPdfUrl: string | null;
+  detailPageUrl: string | null;
+  extractedText?: string;
+  roadName: string | null;
+  village: string | null;
+  mandal: string | null;
+  chainageStart: string | null;
+  chainageEnd: string | null;
+  rawDocumentsMetadata?: any;
   rawPayload?: any;
   location: {
     latitude: number;

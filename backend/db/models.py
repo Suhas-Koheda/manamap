@@ -31,8 +31,20 @@ class Tender(Base):
     pdf_url = Column(String, nullable=True)
     raw_payload = Column(JSON, nullable=True)  # Store original raw response for debugging
     
-    latitude = Column(Float, nullable=False)
-    longitude = Column(Float, nullable=False)
+    # Infrastructure intelligence fields
+    nit_pdf_url = Column(String, nullable=True)
+    boq_pdf_url = Column(String, nullable=True)
+    detail_page_url = Column(String, nullable=True)
+    extracted_text = Column(Text, nullable=True)
+    road_name = Column(String, nullable=True)
+    village = Column(String, nullable=True)
+    mandal = Column(String, nullable=True)
+    chainage_start = Column(String, nullable=True)
+    chainage_end = Column(String, nullable=True)
+    raw_documents_metadata = Column(JSON, nullable=True)
+    
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
